@@ -3,34 +3,18 @@
 
 #include "DataStructs.h"
 
-// base class for flux functions
-template<class T>
-class FluxFunction
-{
-  public:
-    FluxFunction();
-
-    // in U; out F
-    virtual void computeFlux(DataStruct<T> &U, DataStruct<T> &F) = 0;
-
-    // same as above but at the node level
-    virtual T computeFlux(const T &Ui) = 0;
-};
-
-template<class T>
-class LinearFlux : public FluxFunction<T>
+template<typename T>
+class EulerFlux
 {
   private:
-    T c;
+    T gamma;
 
   public:
-    LinearFlux();
+    EulerFlux(T gamma_ = 1.4);  // valor por defecto
 
-    // in U; out F
-    virtual void computeFlux(DataStruct<T> &U, DataStruct<T> &F);
-
-    // same as above but at the node level
-    virtual T computeFlux(const T &Ui);
+    // in: rho, rhou, rhoE; out: flujos
+    void computeFlux(DataStruct<T>& rho, DataStruct<T>& rhou, DataStruct<T>& rhoE,
+                     DataStruct<T>& flux_rho, DataStruct<T>& flux_rhou, DataStruct<T>& flux_rhoE);
 };
 
 #endif // _FLUX_FUNCTIONS

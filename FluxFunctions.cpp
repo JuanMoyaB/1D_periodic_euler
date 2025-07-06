@@ -1,37 +1,31 @@
 #include "FluxFunctions.h"
 
-template<class T>
-FluxFunction<T>::FluxFunction()
+template<typename T>
+EulerFlux<T>::EulerFlux(T gamma_)
 {
-  
-};
+  gamma = gamma_;
+}
 
-template<class T>
-LinearFlux<T>::LinearFlux()
+template<typename T>
+void EulerFlux<T>::computeFlux(DataStruct<T>& rho, DataStruct<T>& rhou, DataStruct<T>& rhoE,
+                               DataStruct<T>& flux_rho, DataStruct<T>& flux_rhou, DataStruct<T>& flux_rhoE)
 {
-  c = 1.;
-};
+  int N = rho.getSize();
 
-template<class T>
-void LinearFlux<T>::computeFlux(DataStruct<T> &U, DataStruct<T> &F)
-{
-  T *dataU = U.getData();
-  T *dataF = F.getData();
-
-  for(int n = 0; n < U.getSize(); n++)
+  for (int i = 0; i < N; ++i)
   {
-    dataF[n] = c * dataU[n];
-  };
-};
+    T r = rho[i];
+    T ru = rhou[i];
+    T rE = rhoE[i];
+    T u = ru / r;
+    T p = (gamma - 1.0) * (rE - 0.5 * r * u * u);
 
-template<class T>
-T LinearFlux<T>::computeFlux(const T &Ui)
-{
-  return c * Ui;
-};
+    flux_rho[i]  = ru;
+    flux_rhou[i] = ru * u + p;
+    flux_rhoE[i] = u * (rE + p);
+  }
+}
 
-template class FluxFunction<float>;
-template class FluxFunction<double>;
-
-template class LinearFlux<float>;
-template class LinearFlux<double>;
+// Instanciaciones explícitas
+template class EulerFlux<float>;
+template class EulerFlux<double>;

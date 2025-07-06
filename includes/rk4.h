@@ -1,67 +1,39 @@
 #ifndef _RUNGE_KUTTA
 #define _RUNGE_KUTTA
 
-/*
-RUNGE KUTTA 4 CLASS
-
-This class allows time stepping. For flexibility each RK step is taken as follows:
-  initRK();
-  for(s = 0; s<rk.getNumSteps(); s++)
-    1. stepUi(dt)
-    2. impose BCs over the current Ui which can be obtained through currentU()
-    3. compute current F (i.e., Fi = F(Ui) )
-    5. setFi(Fi)
-  finalizeRK(dt);
-
-*/
-
 #include "DataStructs.h"
-#include "FluxFunctions.h"
 
-template<class T>
-class RungeKutta4 
+template<typename T>
+class RungeKuttaEuler
 {
-  private:
-    int nSteps;
-    int currentStep;
+private:
+  int nSteps;
+  int currentStep;
 
-    T *coeffsA, *coeffsB;
+  T *coeffsA, *coeffsB;
 
-    // reference to solution (Un)
-    DataStruct<T> &Un;
+  // referencia a las soluciones actuales
+  DataStruct<T> &rho, &rhou, &rhoE;
 
-    // intermediate solution
-    DataStruct<T> Ui;
+  // soluciones intermedias
+  DataStruct<T> rho_i, rhou_i, rhoE_i;
 
-    // RHS 
-    DataStruct<T> *fi;
+  // RHS por paso
+  DataStruct<T> *frho, *frhou, *frhoE;
 
-  public:
+public:
+  RungeKuttaEuler(DataStruct<T> &_rho, DataStruct<T> &_rhou, DataStruct<T> &_rhoE);
+  ~RungeKuttaEuler();
 
-    // default constructor
-    RungeKutta4(DataStruct<T> &_Un);
+  int getNumSteps();
+  void initRK();
+  void stepUi(T dt);
+  void setFi(DataStruct<T> &_frho, DataStruct<T> &_frhou, DataStruct<T> &_frhoE);
+  void finalizeRK(T dt);
 
-    // default destructor
-    ~RungeKutta4();
-
-    int getNumSteps();
-
-    // initialize the RK
-    void initRK();
-
-    // finalizes the RK (updates Un)
-    void finalizeRK(const T dt);
-
-    /*
-    For the step to work properly, the user must provide the appropriate F for the current Ui.
-    This is done this way becase the user might want to modify the Ui or Fi so that 
-    Boundary conditions can be imposed
-    */
-   void stepUi(T dt);
-   void setFi(DataStruct<T> &_F);
-
-   // current Ui
-   DataStruct<T>* currentU();
+  DataStruct<T>* currentRho();
+  DataStruct<T>* currentRhou();
+  DataStruct<T>* currentRhoE();
 };
 
-#endif // _RUNGE_KUTTA 
+#endif

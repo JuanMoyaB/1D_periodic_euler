@@ -1,70 +1,34 @@
-#ifndef _DATA_STRUCTS
-#define _DATA_STRUCTS
+#ifndef _DATASTRUCTS
+#define _DATASTRUCTS
 
-#include <cstddef>
+#include <vector>
 
-template<class T>
-class DataStruct 
-{
-  private:
-    int size;
-    T *data;
-    bool initialized;
+template<typename T>
+class DataStruct {
+    std::vector<T> data;
+public:
+    // Constructor por defecto
+    DataStruct() {}
 
-  public:
+    // ✅ Constructor que acepta tamaño
+    DataStruct(int n) { data.resize(n); }
 
-    // constructors & destructor
-    inline DataStruct()
-    {
-      size = 0;
-      data = NULL;
-      initialized = false;
-    };
+    void setSize(int n) { data.resize(n); }
+    int getSize() const { return data.size(); }
 
-    inline DataStruct(int _size)
-    {
-      data = new T[_size];
-      size = _size;
-      initialized = true;
-    };
+    T* getData() { return data.data(); }
+    const T* getData() const { return data.data(); }
 
-    inline ~DataStruct() 
-    {
-      if(initialized) delete[] data;
-    };
-
-    // accessors
-    inline int getSize()
-    {
-      return size;
-    }
-
-    inline T* getData()
-    {
-      return data;
-    }
-
-    inline T getData(int i)
-    {
-      return data[i];
-    }
-
-    void setSize(int _size);
-
-    inline DataStruct<T>& operator=(DataStruct<T> &rhs)
-    {
-      this->setSize(rhs.getSize());
-      T *dataRHS = rhs.getData();
-
-      // copy data
-      for(int n = 0; n < size; n++)
-      {
-        data[n] = dataRHS[n];
-      }
-
-      return *this;
-    }
-
+    T& operator[](int i) { return data[i]; }
+    const T& operator[](int i) const { return data[i]; }
 };
 
-#endif // _DATA_STRUCTS
+// Estructura auxiliar para conservar variables físicas
+template<typename T>
+struct Conserved {
+    T rho;
+    T rhou;
+    T rhoE;
+};
+
+#endif

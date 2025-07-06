@@ -1,14 +1,8 @@
-#include <iostream> // std::cout
-#include <fstream> // ofile
-#include <string>
-#include <math.h>
-#include <iomanip> // set precision
+#include <iostream>
+#include <fstream>
+#include <cmath>
 #include <mpi.h>
-
 #include "DataStructs.h"
-#include "rk4.h"
-#include "FluxFunctions.h"
-#include "RHSoperator.h"
 
 #ifdef _DOUBLE_
 #define FLOATTYPE double
@@ -16,133 +10,92 @@
 #define FLOATTYPE float
 #endif
 
-// declare supporting functions
-void write2File(DataStruct<FLOATTYPE> &X, DataStruct<FLOATTYPE> &U, std::string name);
-FLOATTYPE calcL2norm(DataStruct<FLOATTYPE> &u, DataStruct<FLOATTYPE> &uinit);
+const FLOATTYPE gamma_ = 1.4;
 
+Conserved<FLOATTYPE> computeFlux(const Conserved<FLOATTYPE>& U) {
+    Conserved<FLOATTYPE> F;
+    FLOATTYPE rho = U.rho;
+    FLOATTYPE u = U.rhou / rho;
+    FLOATTYPE E = U.rhoE / rho;
+    FLOATTYPE p = (gamma_ - 1.0) * (U.rhoE - 0.5 * rho * u * u);
 
-int main(int narg, char **argv)
-{
-  int numPoints =  80;
-  FLOATTYPE k = 2.; // wave number
+    F.rho = U.rhou;
+    F.rhou = rho * u * u + p;
+    F.rhoE = u * (U.rhoE + p);
+    return F;
+}
 
-  if(narg != 3)
-  {
-    std::cout<< "Wrong number of arguments. You should include:" << std::endl;
-    std::cout<< "    Num points" << std::endl;
-    std::cout<< "    Wave number" << std::endl;
-    return 1;
-  }else
-  {
-    numPoints = std::stoi(argv[1]);
-    k         = std::stod(argv[2]);
-  }
-
-  // solution data
-  DataStruct<FLOATTYPE> u(numPoints), f(numPoints), xj(numPoints);
-
-  // flux function
-  LinearFlux<FLOATTYPE> lf;
-
-  // time solver
-  RungeKutta4<FLOATTYPE> rk(u);
-
-  // Initial Condition
-  FLOATTYPE *datax = xj.getData();
-  FLOATTYPE *dataU = u.getData();
-  for(int j = 0; j < numPoints; j++)
-  {
-    // xj
-    datax[j] = FLOATTYPE(j)/FLOATTYPE(numPoints-1);
-
-    // init Uj
-    dataU[j] = sin(k*2. * M_PI * datax[j]);
-  }
-
-  DataStruct<FLOATTYPE> Uinit;
-  Uinit = u;
-
-  // Operator
-  Central1D<FLOATTYPE> rhs(u,xj,lf);
-
-  FLOATTYPE CFL = 2.4;
-  FLOATTYPE dt = CFL*datax[1];
-
-  // Output Initial Condition
-  write2File(xj, u, "initialCondition.csv");
-
-  FLOATTYPE t_final = 1.;
-  FLOATTYPE time = 0.;
-  DataStruct<FLOATTYPE> Ui(u.getSize()); // temp. data
-
-  // init timer
-  double compTime = MPI_Wtime();
-
-  // main loop
-  while(time < t_final)
-  {
-    if(time+dt >= t_final) dt = t_final - time;
-
-    // take RK step
-    rk.initRK();
-    for(int s = 0; s < rk.getNumSteps(); s++)
-    {
-      rk.stepUi(dt);
-      Ui = *rk.currentU();
-      rhs.eval(Ui);
-      rk.setFi(rhs.ref2RHS());
+void writeToCSV(const std::string& filename, const DataStruct<FLOATTYPE>& x,
+                const DataStruct<Conserved<FLOATTYPE>>& U) {
+    std::ofstream file(filename);
+    for (int i = 0; i < x.getSize(); ++i) {
+        auto u = U[i];
+        file << x[i] << "," << u.rho << "," << u.rhou << "," << u.rhoE << "\n";
     }
-    rk.finalizeRK(dt);
-    time += dt;
-  }
+    file.close();
+}
 
-  // finishe timer
-  compTime = MPI_Wtime() - compTime;
+int main(int argc, char** argv) {
+    MPI_Init(&argc, &argv);
+    int rank;
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
 
-  write2File(xj, u, "final.csv");
+    if (argc < 2) {
+        if (rank == 0) std::cout << "Usage: ./euler1d N\n";
+        MPI_Finalize();
+        return 1;
+    }
 
-  // L2 norm
-  FLOATTYPE err = calcL2norm(Uinit, u);
-  std::cout << std::setprecision(4) << "Comp. time: " << compTime;
-  std::cout << " sec. Error: " << err/k;
-  std::cout << " kdx: " << k*datax[1]*2.*M_PI;
-  std::cout << std::endl;
+    int N = std::stoi(argv[1]);
+    FLOATTYPE dx = 1.0 / N;
+    FLOATTYPE CFL = 0.4;
+    FLOATTYPE t_final = 0.2;
+    FLOATTYPE time = 0.0;
 
-  return 0;
+    DataStruct<FLOATTYPE> x(N);
+    DataStruct<Conserved<FLOATTYPE>> U(N), dU(N);
+
+    for (int i = 0; i < N; ++i) {
+        x[i] = (i + 0.5) * dx;
+        U[i].rho = 1.0 + 0.2 * sin(2.0 * M_PI * x[i]);
+        U[i].rhou = 0.0;
+        U[i].rhoE = U[i].rho / (gamma_ - 1.0);
+    }
+
+    double t0 = MPI_Wtime();
+    while (time < t_final) {
+        FLOATTYPE dt = CFL * dx;
+        if (time + dt > t_final) dt = t_final - time;
+
+        for (int i = 0; i < N; ++i) {
+            int ip = (i + 1) % N;
+            int im = (i - 1 + N) % N;
+
+            auto Fp = computeFlux(U[ip]);
+            auto Fm = computeFlux(U[im]);
+
+            dU[i].rho = -(Fp.rho - Fm.rho) / (2.0 * dx);
+            dU[i].rhou = -(Fp.rhou - Fm.rhou) / (2.0 * dx);
+            dU[i].rhoE = -(Fp.rhoE - Fm.rhoE) / (2.0 * dx);
+        }
+
+        for (int i = 0; i < N; ++i) {
+            U[i].rho += dt * dU[i].rho;
+            U[i].rhou += dt * dU[i].rhou;
+            U[i].rhoE += dt * dU[i].rhoE;
+        }
+
+        time += dt;
+    }
+    double tf = MPI_Wtime() - t0;
+
+    if (rank == 0) {
+        std::cout << "Comp. time: " << tf << " sec.\n";
+        writeToCSV("solution.csv", x, U);
+    }
+
+    MPI_Finalize();
+    return 0;
 }
 
 
-// ==================================================================
-// AUXILIARY FUNCTIONS
-// ==================================================================
-void write2File(DataStruct<FLOATTYPE> &X, DataStruct<FLOATTYPE> &U, std::string name)
-{
-  std::ofstream file;
-  file.open(name,std::ios_base::trunc);
-  if(!file.is_open()) 
-  {
-    std::cout << "Couldn't open file for Initial Condition" << std::endl;
-    exit(1);
-  }
-  
-  for(int j = 0; j < U.getSize(); j++)
-  {
-    file << X.getData()[j] << " ," << U.getData()[j] << std::endl;
-  }
-
-  file.close();
-}
-
-FLOATTYPE calcL2norm(DataStruct<FLOATTYPE> &u, DataStruct<FLOATTYPE> &uinit)
-{
-  FLOATTYPE err = 0.;
-  const FLOATTYPE *dataU = u.getData();
-  const FLOATTYPE *dataInit = uinit.getData();
-
-  for(int n = 0; n < u.getSize(); n++)
-  {
-    err += (dataU[n] - dataInit[n])*(dataU[n] - dataInit[n]);
-  }
-
-  return sqrt( err );
-}

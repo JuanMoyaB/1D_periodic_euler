@@ -1,132 +1,106 @@
 #include "rk4.h"
 #include <cassert>
 
-template<class T>
-RungeKutta4<T>::RungeKutta4(DataStruct<T> &_Un):
-Un(_Un)
+template<typename T>
+RungeKuttaEuler<T>::RungeKuttaEuler(DataStruct<T> &_rho, DataStruct<T> &_rhou, DataStruct<T> &_rhoE)
+: rho(_rho), rhou(_rhou), rhoE(_rhoE)
 {
   nSteps = 4;
   currentStep = 0;
 
-  coeffsA = new T[4];
-  coeffsB = new T[4];
-  coeffsA[0] = 0.;
-  coeffsA[1] = 0.5;
-  coeffsA[2] = 0.5;
-  coeffsA[3] = 1.;
-  coeffsB[0] = 1.;
-  coeffsB[1] = 2.;
-  coeffsB[2] = 2.;
-  coeffsB[3] = 1.;
+  coeffsA = new T[4]{0., 0.5, 0.5, 1.};
+  coeffsB = new T[4]{1., 2., 2., 1.};
 
-  fi = new DataStruct<T>[nSteps];
+  frho  = new DataStruct<T>[nSteps];
+  frhou = new DataStruct<T>[nSteps];
+  frhoE = new DataStruct<T>[nSteps];
 
-  fi[0].setSize(Un.getSize());
-  fi[1].setSize(Un.getSize());
-  fi[2].setSize(Un.getSize());
-  fi[3].setSize(Un.getSize());
+  for (int i = 0; i < nSteps; ++i) {
+    frho[i].setSize(rho.getSize());
+    frhou[i].setSize(rhou.getSize());
+    frhoE[i].setSize(rhoE.getSize());
+  }
 
-  Ui.setSize(Un.getSize());
-};
+  rho_i.setSize(rho.getSize());
+  rhou_i.setSize(rhou.getSize());
+  rhoE_i.setSize(rhoE.getSize());
+}
 
-template<class T>
-RungeKutta4<T>::~RungeKutta4()
+template<typename T>
+RungeKuttaEuler<T>::~RungeKuttaEuler()
 {
-  delete[] fi;
   delete[] coeffsA;
   delete[] coeffsB;
-};
+  delete[] frho;
+  delete[] frhou;
+  delete[] frhoE;
+}
 
-template<class T>
-int RungeKutta4<T>::getNumSteps()
-{
-  return nSteps;
-};
+template<typename T>
+int RungeKuttaEuler<T>::getNumSteps() { return nSteps; }
 
-template<class T>
-void RungeKutta4<T>::initRK()
-{
-  currentStep = 0;
-};
+template<typename T>
+void RungeKuttaEuler<T>::initRK() { currentStep = 0; }
 
-template<class T>
-void RungeKutta4<T>::stepUi(T dt)
+template<typename T>
+void RungeKuttaEuler<T>::stepUi(T dt)
 {
   assert(currentStep < nSteps);
 
-  if(currentStep == 0)
-  {
-    T *dataUi = Ui.getData();
-    const T *dataU  = Un.getData();
-
-    for(int n = 0; n < Ui.getSize(); n++)
-    {
-      dataUi[n] = dataU[n];
+  for (int i = 0; i < rho.getSize(); ++i) {
+    if (currentStep == 0) {
+      rho_i[i]  = rho[i];
+      rhou_i[i] = rhou[i];
+      rhoE_i[i] = rhoE[i];
+    } else {
+      rho_i[i]  = rho[i]  + coeffsA[currentStep] * dt * frho[currentStep - 1][i];
+      rhou_i[i] = rhou[i] + coeffsA[currentStep] * dt * frhou[currentStep - 1][i];
+      rhoE_i[i] = rhoE[i] + coeffsA[currentStep] * dt * frhoE[currentStep - 1][i];
     }
   }
-  else
-  {
-    T *datafi = fi[currentStep-1].getData();
-    T *dataUi = Ui.getData();
-    const T *dataU  = Un.getData();
+}
 
-    for(int n = 0; n < Ui.getSize(); n++)
-    {
-      dataUi[n] = dataU[n] + coeffsA[currentStep]*dt* datafi[n];
-    }
-  }
-};
-
-template<class T>
-void RungeKutta4<T>::finalizeRK(const T dt)
+template<typename T>
+void RungeKuttaEuler<T>::setFi(DataStruct<T> &_frho, DataStruct<T> &_frhou, DataStruct<T> &_frhoE)
 {
-  T *dataUn = Un.getData();
-  T *dataUi = Ui.getData();
-
-  // set Ui to 0
-  for(int n = 0; n < Ui.getSize(); n++)
-  {
-    dataUi[n] = 0.;
-  }
-  
-  for(int s = 0; s < nSteps; s++)
-  {
-    const T *dataFi = fi[s].getData();
-    const T b = coeffsB[s];
-
-    for(int n = 0; n < Ui.getSize(); n++)
-    {
-      dataUi[n] += b * dataFi[n];
-    }
-  }
-
-  const T oneDiv6 = 1. / 6.;
-  for(int n = 0; n < Ui.getSize(); n++)
-  {
-    dataUn[n] += dt * oneDiv6 * dataUi[n];
-  }
-};
-
-template<class T>
-void RungeKutta4<T>::setFi(DataStruct<T> &_F)
-{
-  T *dataFi = fi[currentStep].getData();
-  const T *dataF  = _F.getData();
-
-  for(int n = 0; n < Ui.getSize(); n++)
-  {
-    dataFi[n] = dataF[n];
+  for (int i = 0; i < rho.getSize(); ++i) {
+    frho[currentStep][i]  = _frho[i];
+    frhou[currentStep][i] = _frhou[i];
+    frhoE[currentStep][i] = _frhoE[i];
   }
 
   currentStep++;
-};
+}
 
-template<class T>
-DataStruct<T> * RungeKutta4<T>::currentU()
+template<typename T>
+void RungeKuttaEuler<T>::finalizeRK(T dt)
 {
-  return &Ui;
-};
+  for (int i = 0; i < rho.getSize(); ++i) {
+    T sumRho  = 0.;
+    T sumRhou = 0.;
+    T sumRhoE = 0.;
 
+    for (int s = 0; s < nSteps; ++s) {
+      sumRho  += coeffsB[s] * frho[s][i];
+      sumRhou += coeffsB[s] * frhou[s][i];
+      sumRhoE += coeffsB[s] * frhoE[s][i];
+    }
 
-template class RungeKutta4<float>;
-template class RungeKutta4<double>;
+    rho[i]  += dt * (1. / 6.) * sumRho;
+    rhou[i] += dt * (1. / 6.) * sumRhou;
+    rhoE[i] += dt * (1. / 6.) * sumRhoE;
+  }
+}
+
+template<typename T>
+DataStruct<T>* RungeKuttaEuler<T>::currentRho()  { return &rho_i; }
+
+template<typename T>
+DataStruct<T>* RungeKuttaEuler<T>::currentRhou() { return &rhou_i; }
+
+template<typename T>
+DataStruct<T>* RungeKuttaEuler<T>::currentRhoE() { return &rhoE_i; }
+
+// Instanciaciones
+template class RungeKuttaEuler<float>;
+template class RungeKuttaEuler<double>;
